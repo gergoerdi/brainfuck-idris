@@ -42,3 +42,8 @@ between : Parser () -> Parser () -> Parser a -> Parser (List a)
 between open close body = open $> loop
   where
     loop = (close $> pure []) <|> [| body :: loop |]
+
+many : Parser a -> Parser (List a)
+many p = Parse $ \s => case unParser p s of
+  [] => [([], s)]
+  xs => concat $ map (\(x, s') => map (\(xs, s'') => (x::xs, s'')) (unParser (many p) s')) xs

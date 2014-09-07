@@ -14,8 +14,6 @@ parseStmt = incData <|> decData <|> incPtr <|> decPtr <|> print <|> loop
     print = token "." $> pure Print
     loop = [| Loop (between (token "[") (token "]") parseStmt) |]
 
-test : Maybe Stmt
-test = runParser parseStmt "[+[-]]"
 
 -- Byte : Type
 -- Byte = Fin 256
@@ -56,4 +54,12 @@ test = runParser parseStmt "[+[-]]"
 --       fZ => go mem ptr ss
 --       fS _ => go mem ptr body ++ go mem ptr ((Loop body) :: ss)
 --     go mem ptr (Print::ss) = index ptr mem :: go mem ptr ss
+parseProgram : Parser Program
+parseProgram = many parseStmt
 
+test : Maybe Program
+test = runParser parseProgram $
+       ">+++++++++[<++++++++>-]" ++
+       "<.>+++++++[<++++>-]<+.+++++++..+++.[-]" ++
+       ">++++++++[<++++>-]<.>+++++++++++[<++++++++>-]<-.--------.+++" ++
+       ".------.--------.[-]>++++++++[<++++>-]<+.[-]++++++++++."
