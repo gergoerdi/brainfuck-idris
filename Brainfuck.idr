@@ -1,4 +1,5 @@
 import Parser
+import Control.Monad.RWS
 
 Program : Type
 data Stmt = IncData | DecData | IncPtr | DecPtr | Loop Program | Print
@@ -18,7 +19,7 @@ parseStmt = incData <|> decData <|> incPtr <|> decPtr <|> print <|> loop
     incData = token "+" $> pure IncData
     decData = token "-" $> pure DecData
     incPtr = token ">" $> pure IncPtr
-    decPtr = token "<" $> pure DecPtr 
+    decPtr = token "<" $> pure DecPtr
     print = token "." $> pure Print
     loop = P $ \s => unP [| Loop (between (token "[") (token "]") parseStmt) |] s
 
@@ -61,27 +62,53 @@ update f fZ (x :: xs) = f x :: xs
 update f (fS k) (x :: xs) = x :: update f k xs
 
 eval : Program -> List Byte
-eval ss = case evalProgram (replicate MemorySize fZ) fZ ss of
+eval ss = case runIdentity $ runRWST (evalProgram ss) () (replicate MemorySize fZ, fZ) of
     (_, _, output) => output
   where
-    evalProgram : Memory -> Fin MemorySize -> Program -> (Memory, Fin MemorySize, List Byte)
-    evalStmt : Memory -> Fin MemorySize -> Stmt -> (Memory, Fin MemorySize, List Byte)
-    
-    evalProgram mem ptr [] = (mem, ptr, [])
-    evalProgram mem ptr (s::ss) = case evalStmt mem ptr s of
-        (mem', ptr', output1) => case evalProgram mem' ptr' ss of
-          (mem'', ptr'', output2) => (mem'', ptr'', output1 ++ output2)
-          
-    evalStmt mem ptr IncData = (update inc ptr mem, ptr, [])
-    evalStmt mem ptr DecData = (update dec ptr mem, ptr, [])
-    evalStmt mem ptr IncPtr = (mem, inc ptr, [])
-    evalStmt mem ptr DecPtr = (mem, dec ptr, [])
-    evalStmt mem ptr Print = (mem, ptr, [index ptr mem])
-    evalStmt mem ptr (Loop body) = case index ptr mem of
-        fZ => (mem, ptr, [])
-        fS _ => case evalProgram mem ptr body of
-           (mem', ptr', output1) => case evalStmt mem' ptr' (Loop body) of
-             (mem'', ptr'', output2) => (mem'', ptr'', output1 ++ output2)
+    Eval : Type -> Type
+    Eval = RWS () (List Byte) (Memory, Fin MemorySize)
+
+    getPointed : Eval Byte
+    getPointed = do
+        (mem, ptr) <- get
+        return $ index ptr mem
+
+    modifyPtr : (Fin MemorySize -> Fin MemorySize) -> Eval ()
+    modifyPtr f = do
+        (mem, ptr) <- get
+        put (mem, f ptr)
+
+    modifyPointed : (Byte -> Byte) -> Eval ()
+    modifyPointed f = do
+        (mem, ptr) <- get
+        put (update f ptr mem, ptr)
+
+    evalProgram : Program -> Eval ()
+    evalStmt : Stmt -> Eval ()
+
+    evalProgram [] = return ()
+    evalProgram (s::ss) = do
+        evalStmt s
+        evalProgram ss
+
+    evalStmt IncData = do
+        modifyPointed inc
+    evalStmt DecData = do
+        modifyPointed dec
+    evalStmt IncPtr = do
+        modifyPtr inc
+    evalStmt DecPtr = do
+        modifyPtr dec
+    evalStmt Print = do
+        v <- getPointed
+        tell $ List.(::) v []
+    evalStmt (Loop body) = do
+        v <- getPointed
+        case v of
+          fZ => return ()
+          fS _ => do
+             evalProgram body
+             evalStmt (Loop body)
 
 main : IO ()
 main = case test of
