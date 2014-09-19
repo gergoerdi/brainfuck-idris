@@ -26,15 +26,6 @@ parseStmt = incData <|> decData <|> incPtr <|> decPtr <|> print <|> loop
 parseProgram : Parser Program
 parseProgram = many parseStmt
 
-test : Maybe Program
--- test = runParser parseProgram $
---        ">+++++++++[<++++++++>-]" ++
---        "<.>+++++++[<++++>-]<+.+++++++..+++.[-]" ++
---        ">++++++++[<++++>-]<.>+++++++++++[<++++++++>-]<-.--------.+++" ++
---        ".------.--------.[-]>++++++++[<++++>-]<+.[-]++++++++++."
-test = runParser parseProgram "++++[.-]"
--- -- test = Just [IncData, Print]
-
 Byte : Type
 Byte = Fin 256
 
@@ -111,13 +102,9 @@ eval ss = case runIdentity $ runRWST (evalProgram ss) () (replicate MemorySize f
              evalStmt (Loop body)
 
 main : IO ()
-main = case test of
-     Nothing => putStrLn "Parse error"
-     Just p => do
-          putStrLn $ concat . map show $ p
-          putStrLn $ show . map finToNat $ eval p
-
--- main : IO ()
--- main = case test of
---      Nothing => putStrLn "Parse error"
---      Just p => 
+main = do
+    s <- readFile "hello.bf"
+    case runParser parseProgram s of
+      Nothing => putStrLn "Parse error"
+      Just p => do
+        putStr $ pack . map (chr . cast . finToNat) $ eval p
